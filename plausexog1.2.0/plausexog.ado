@@ -1,5 +1,5 @@
 *! plausexog: Estimating bounds with a plausibly exogenous exclusion restriction  
-*! Version 1.1.0 agosto 16, 2014 @ 15:53:16
+*! Version 1.1.0 agosto 16, 2014 @ 17:14:03
 *! Author: Damian Clarke (application of code and ideas of Conley et al., 2012)
 *! Much of the heart of this code comes from the Conley et al implementation
 *! Contact: damian.clarke@economics.ox.ac.uk
@@ -51,7 +51,7 @@ tokenize `0'
 local method `1'
 macro shift
 dis "`0'"
-
+	
 if "`method'"!="uci"&"`method'"!="ltz"&"`method'"!="upwci" {
 	dis as error "Method of estimation must be specified."
 	dis "Re-specify using uci, ltz or upcwi (see help file for more detail)"
@@ -390,11 +390,29 @@ if "`method'"=="ltz" {
 			qui dis "Estimating for `item'"
 			mat def omegaC=`item'
 			mat def muC=``j''
+
+			scalar s4=rowsof(omegaC)
+			scalar s5=colsof(omegaC)
+			scalar s6=rowsof(muC)
+			scalar s7=colsof(muC)
+
+			if s1!=s4|s1!=s5 {
+				dis as err "Z'Z matrix is `=s1'*`=s1', graph omega (`j') defined by user is `=s4'*`=s5'"
+				dis as err "Ensure that Omega is of the same dimension as Z'Z to avoid `em'"
+			}
+			if s2!=s4|s2!=s5 {
+				dis as err "Z'X matrix is `=s2'*`=s2', graph omega (`j') defined by user is `=s4'*`=s5'"
+				dis as err "Ensure that Omega is of the same dimension as Z'X to avoid `em'"
+			}
+			if s7!=1 {
+				dis as error "graph mu (`j') does not have 1 column"
+				dis as err "Ensure that each graph mu is 1*k vector to avoid `em'"
+			}
 				
 			qui estimates restore __iv
+
 			mat Vc = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omegaC * ZX*inv(ZX'*inv(ZZ)*ZX)
 			mat bc = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * muC)'
-
 				
 			ereturn post bc Vc
 			matrix CI = -invnormal((1-`level')/2)
