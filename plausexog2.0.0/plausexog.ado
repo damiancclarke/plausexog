@@ -34,10 +34,12 @@ syntax anything(name=0 id="variable list")
 	graphmu(namelist min=2 max=22)
 	graphdelta(numlist)
 	graphopts(string)
-	VCE(string)
+    VCE(string)
+    DISTribution(string) 
 	]
 	;
 #delimit cr
+
 
 ********************************************************************************
 *** (1) Unpack arguments, check for valid syntax, general error capture
@@ -123,7 +125,7 @@ if "`method'"=="uci" {
 		}
 	}
 }
-if "`method'"=="ltz" {
+if "`method'"=="ltz" & length("`distribution'")==0 {
 	if length("`omega'")==0|length("`mu'")==0 {
 		dis as error "For ltz, omega and mu matrices must be defined"
 		exit 200
@@ -133,7 +135,60 @@ if "`method'"=="ltz" {
 		mat def mu_in=`mu'
 	}
 }
-	
+
+if length("`distribution'")!=0{
+    if "`method'"!="ltz" {
+        dis as error "The distribution option can only be specified with ltz"
+        error 200
+    }
+    local distribution: subinstr local distribution "," " , ", all
+    local distcnt : list sizeof distribution
+
+    local jj=1
+    foreach j of numlist 1(1)`distcnt' {
+        local dist`jj': word `j' of `distribution'
+        local dist`jj': subinstr local dist`jj' "," ""        
+        if "`dist`jj''"!="" local ++jj
+    }
+    
+    local derr1 "If specifying a distribution with"
+    local derr2 "parameters must be specified"
+    local accept "normal, uniform, chi2, poisson, t, special"
+    if "`dist1'"=="normal" {
+        if `jj'!=4 {
+            dis as error "`derr1' normal, 2 `derr2' (mean and standard deviation)."
+            exit 200
+        }
+        local gammaCall rnormal(`dist2', `dist3')
+    }
+    else if "`dist1'"=="uniform" {
+        if `jj'!=4 {
+            dis as error "`derr1' uniform, 2 `derr2' (minimum and maximum)."
+            exit 200
+        }
+        local gammaCall `dist2'+(`dist3'-`dist2')*runiform()
+    }
+    else if "`distribution'"=="uniform" {
+        
+    }
+    else if "`distribution'"=="chi2" {
+        
+    }
+    else if "`distribution'"=="poisson" {
+        
+    }
+    else if "`distribution'"=="t" {
+        
+    }
+    else if "`distribution'"=="special" {
+        
+    }
+    else {
+        dis as error "The distribution option can only specify: `accept'"
+        error 200
+    }
+}
+
 dis "Estimating Conely et al.'s `method' method"
 dis "Exogenous variables: `varlist1'"
 dis "Endogenous variables: `varlist2'"
