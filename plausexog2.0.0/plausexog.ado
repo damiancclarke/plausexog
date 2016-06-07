@@ -1,5 +1,5 @@
 *! plausexog: Estimating bounds with a plausibly exogenous exclusion restriction  
-*! Version 1.1.0 agosto 16, 2014 @ 17:14:03
+*! Version 2.0.0 junio 7, 2016 @ 10:12:45
 *! Author: Damian Clarke (application of code and ideas of Conley et al., 2012)
 *! Much of the heart of this code comes from the Conley et al implementation
 *! Contact: damian.clarke@economics.ox.ac.uk
@@ -12,6 +12,7 @@ version highlights:
 1.0.1: Minor change to graph label options.
 1.1.0: Weighting incorporated
 1.2.0: Bug fix: very long names passed through syntax
+2.2.0: Now Allowing for all arbitrary distributions with simulation algorithm
 */
 
 cap program drop plausexog
@@ -35,7 +36,9 @@ syntax anything(name=0 id="variable list")
 	graphdelta(numlist)
 	graphopts(string)
     VCE(string)
-    DISTribution(string) 
+    DISTribution(string)
+    seed(numlist min=1 max=1)
+    iterations(integer 1000) 
 	]
 	;
 #delimit cr
@@ -99,7 +102,7 @@ local allout `varlist1' `varlist2' constant
 local allexog `varlist1' `varlist_iv' constant
 	
 local count2     : word count `varlist2'
-local count_iv	  : word count `varlist_iv' 
+local count_iv	 : word count `varlist_iv' 
 local count_all  : word count `allout'
 local count_exog : word count `allexog'
 local countmin   : word count `gmin'
@@ -136,7 +139,7 @@ if "`method'"=="ltz" & length("`distribution'")==0 {
 	}
 }
 
-if length("`distribution'")!=0{
+if length("`distribution'")!=0 {
     if "`method'"!="ltz" {
         dis as error "The distribution option can only be specified with ltz"
         error 200
@@ -151,37 +154,79 @@ if length("`distribution'")!=0{
         if "`dist`jj''"!="" local ++jj
     }
     
-    local derr1 "If specifying a distribution with"
-    local derr2 "parameters must be specified"
-    local accept "normal, uniform, chi2, poisson, t, special"
+    local derr1  "If specifying a distribution with"
+    local derr2  "parameter must be specified"
+    local derr2s "parameters must be specified"
+    local accept "normal, uniform, chi2, poisson, t, gamma, special"
     if "`dist1'"=="normal" {
         if `jj'!=4 {
-            dis as error "`derr1' normal, 2 `derr2' (mean and standard deviation)."
+            dis as error "`derr1' normal, 2 `derr2s' (mean and standard deviation)."
             exit 200
         }
         local gammaCall rnormal(`dist2', `dist3')
     }
     else if "`dist1'"=="uniform" {
         if `jj'!=4 {
-            dis as error "`derr1' uniform, 2 `derr2' (minimum and maximum)."
+            dis as error "`derr1' uniform, 2 `derr2s' (minimum and maximum)."
             exit 200
         }
         local gammaCall `dist2'+(`dist3'-`dist2')*runiform()
     }
-    else if "`distribution'"=="uniform" {
-        
+    else if "`dist1'"=="chi2" {
+        if `jj'!=3 {
+            dis as error "`derr1' chi2, 1 `derr2' (degrees of freedom)."
+            exit 200
+        }
+        if `dist2'<1 {
+            dis as error "At least 1 degree of freedom must be specified for chi2"
+            exit 200
+        }
+        local gammaCall rchi2(`dist2')        
     }
-    else if "`distribution'"=="chi2" {
-        
+    else if "`dist1'"=="poisson" {
+        if `jj'!=3 {
+            dis as error "`derr1' poisson, 1 `derr2' (distribution mean)."
+            exit 200
+        }
+        if `dist2'<1 {
+            dis as error "At least a mean of 1 must be specified for poisson"
+            exit 200
+        }
+        local gammaCall rpoisson(`dist2')                
     }
-    else if "`distribution'"=="poisson" {
-        
+    else if "`dist1'"=="t" {
+        if `jj'!=3 {
+            dis as error "`derr1' t, 1 `derr2' (degrees of freedom)."
+            exit 200
+        }
+        if `dist2'<1 {
+            dis as error "At least 1 degree of freedom must be specified for t"
+            exit 200
+        }
+        local gammaCall rt(`dist2')
     }
-    else if "`distribution'"=="t" {
-        
+    else if "`dist1'"=="gamma" {
+        if `jj'!=4 {
+            dis as error "`derr1' gamma, 2 `derr2s' (shape and scale)."
+            exit 200
+        }
+        if `dist2'<=0|`dist3'<=0 {
+            dis as error "The shape and scale parameter for gamma must be > 0"
+            exit 200
+        }
+        local gammaCall rgamma(`dist2',`dist3')
     }
-    else if "`distribution'"=="special" {
-        
+    else if "`dist1'"=="special" {
+        local sperr "To define your own distribution you must specify"
+        if `jj'!=3 {
+            dis as error "`sperr' one valid variable with the empirical distribution"
+            exit 200
+        }
+        cap sum `dist2'
+        if _rc!=0 {
+            dis as error "`sperr' a valid variable with the empirical distribution"
+            exit 200
+        }
     }
     else {
         dis as error "The distribution option can only specify: `accept'"
@@ -344,10 +389,10 @@ if "`method'"=="uci" {
 	}
 }
 
-	
+
 ********************************************************************************
 *** (5) Local to Zero approach (ltz)
-********************************************************************************
+********************************************************************************    
 if "`method'"=="ltz" {
 	tempvar const
 	qui gen `const'=1
@@ -412,8 +457,94 @@ if "`method'"=="ltz" {
 		dis as err "Z'X matrix is `=s2'*`=s2', Omega defined by user is `=s3'*`=s3'"
 		dis as err "Ensure that Omega is of the same dimension as Z'X to avoid `em'"
 	}
-		
-   *****************************************************************************
+
+    *****************************************************************************
+	*** (5c) Form estimates if non-normal distribution
+	*****************************************************************************
+    if length("`distribution'")!=0 {
+
+        if length("`seed'")!= 0 {
+            set seed `seed'
+        }
+        if "`dist1'"=="special" {
+            mkmat `dist2', matrix(specialgamma) nomissing
+            matrix mnsp = rowsof(specialgamma)
+            local nsp   = mnsp[1,1]
+            matrix gammaDonors = J(`iterations',1,.)
+            foreach gd of numlist 1(1)`iterations' {
+                matrix gammaDonors[`gd',1]=specialgamma[ceil(runiform()*`nsp'),1]
+            }
+        }
+        qui estimates restore __iv
+        qui estat vce
+        matrix varcovar = r(V)
+        mata: st_matrix("betas", select(st_matrix("e(b)"), st_matrix("e(b)") :!=0))
+
+        matrix mnvars = colsof(betas)
+        local nvars   = mnvars[1,1]
+        matrix gamma  = J(`nvars',1,0)
+        matrix A      = inv(ZX'*inv(ZZ)*ZX)*ZX'
+        foreach num of numlist 1(1)`nvars' {
+             matrix betasSim = J(`iterations',`nvars',.)
+        }
+
+        qui count
+        if r(N)>=`iterations' {
+            dis "Simulating.  This may take a moment..."
+            local simvars
+            foreach num of numlist 1(1)`nvars' {
+                tempvar sim`num'
+                local simvars `simvars' `sim`num''
+            }
+            drawnorm `simvars', cov(varcovar) means(betas)
+
+            local iter = 1
+            while `iter' <= `iterations' {
+                if "`dist1'"=="special" local gammaCall = gammaDonors[`iter',1]
+                matrix gamma[1,1]=`gammaCall'
+                matrix F = A*gamma
+                foreach num of numlist 1(1)`nvars' {
+                    qui sum `sim`num'' in `iter'
+                    local input = r(mean)
+                    matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
+                }
+                local ++iter
+            }
+        }
+        else {
+            dis "Simulating.  This may take a moment..."
+            local iter = 1
+            while `iter' <= `iterations' {
+                local simvars
+                foreach num of numlist 1(1)`nvars' {
+                    tempvar sim`num'
+                    local simvars `simvars' `sim`num''
+                }
+                drawnorm `simvars', cov(varcovar) means(betas)
+                if "`dist1'"=="special" local gammaCall = gammaDonors[`iter',1]
+                matrix gamma[1,1]=`gammaCall'
+                matrix F = A*gamma
+                foreach num of numlist 1(1)`nvars' {
+                    qui sum `sim`num'' in 1
+                    local input = r(mean)
+                    matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
+                }
+                drop `simvars'
+                local ++iter
+            }
+        }
+
+        foreach num of numlist 1(1)`nvars' {
+            mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
+            
+            local lowerbound = betasSim[round(`iterations'*0.025),`num']
+            local upperbound = betasSim[round(`iterations'*0.975),`num']
+            dis "Bound for variable `num' is [`lowerbound',`upperbound']
+        }
+        exit
+
+    }
+    *****************************************************************************
 	*** (5ci) Form augmented var-covar and coefficient matrices for graphing
 	*****************************************************************************
 	if length("`graph'")!=0 {
@@ -483,7 +614,7 @@ if "`method'"=="ltz" {
 			local ++j
 		}
 	}
-   *****************************************************************************
+    *****************************************************************************
 	*** (5cii) Form augmented var-covar and coefficient matrices (see appendix)
 	*****************************************************************************
 	qui estimates restore __iv
