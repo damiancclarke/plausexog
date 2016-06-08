@@ -12,12 +12,13 @@ version highlights:
 1.0.1: Minor change to graph label options.
 1.1.0: Weighting incorporated
 1.2.0: Bug fix: very long names passed through syntax
-2.2.0: Now Allowing for all arbitrary distributions with simulation algorithm
+2.0.0: Now Allowing for all arbitrary distributions with simulation algorithm
 */
 
 cap program drop plausexog
 program plausexog, eclass
 version 8.0
+set matsize 1000
 #delimit ;
 
 syntax anything(name=0 id="variable list")
@@ -66,7 +67,7 @@ if "`method'"!="uci"&"`method'"!="ltz"&"`method'"!="upwci" {
 	
 if `equal'!=1|`lparen'!=1|`rparen'!=1 {
 	dis as error "Specification of varlist is incorrect."
-	dis as error "Ensure that synatx is: method yvar [exog] (endog=iv), [opts]"	
+	dis as error "Ensure that syntax is: method yvar [exog] (endog=iv), [opts]"	
 	exit 200
 }
 	
@@ -144,6 +145,10 @@ if length("`distribution'")!=0 {
         dis as error "The distribution option can only be specified with ltz"
         error 200
     }
+    if length("`omega'")!=0|length("`mu'")!=0 {
+        dis as error "Omega and mu should not be used with the distribution option"
+        error 200
+    }
     local distribution: subinstr local distribution "," " , ", all
     local distcnt : list sizeof distribution
 
@@ -153,28 +158,37 @@ if length("`distribution'")!=0 {
         local dist`jj': subinstr local dist`jj' "," ""        
         if "`dist`jj''"!="" local ++jj
     }
+    local expD = 2+2*`count_iv'
+    local expS = 2+1*`count_iv'
+    local cntD = 2*`count_iv'
+    local cntS = 1*`count_iv'    
     
     local derr1  "If specifying a distribution with"
-    local derr2  "parameter must be specified"
-    local derr2s "parameters must be specified"
+    local derrb  "and `count_iv' instrument(s)"
+    local derr2  "parameter(s) must be specified"
     local accept "normal, uniform, chi2, poisson, t, gamma, special"
     if "`dist1'"=="normal" {
-        if `jj'!=4 {
-            dis as error "`derr1' normal, 2 `derr2s' (mean and standard deviation)."
+        if `jj'!=`expD' {
+            dis as error "`derr1' normal `derrb', `cntD' `derr2' (mean and std dev)."
             exit 200
         }
-        local gammaCall rnormal(`dist2', `dist3')
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'+1
+            local ivh = `ivn'+2
+            local gammaCall`ivn' rnormal(`dist`ivl'', `dist`ivh'')
+            dis `gammaCall`ivn''
+        }
     }
     else if "`dist1'"=="uniform" {
-        if `jj'!=4 {
-            dis as error "`derr1' uniform, 2 `derr2s' (minimum and maximum)."
+        if `jj'!=`expD' {
+            dis as error "`derr1' uniform `derrb', `cntD' `derr2' (min and max)."
             exit 200
         }
         local gammaCall `dist2'+(`dist3'-`dist2')*runiform()
     }
     else if "`dist1'"=="chi2" {
-        if `jj'!=3 {
-            dis as error "`derr1' chi2, 1 `derr2' (degrees of freedom)."
+        if `jj'!=`expS' {
+            dis as error "`derr1' chi2 `derrb', `cntS' `derr2' (degrees of freedom)."
             exit 200
         }
         if `dist2'<1 {
@@ -184,8 +198,8 @@ if length("`distribution'")!=0 {
         local gammaCall rchi2(`dist2')        
     }
     else if "`dist1'"=="poisson" {
-        if `jj'!=3 {
-            dis as error "`derr1' poisson, 1 `derr2' (distribution mean)."
+        if `jj'!=`expS' {
+            dis as error "`derr1' poisson `derrb', `cntS' `derr2' (distribution mean)."
             exit 200
         }
         if `dist2'<1 {
@@ -195,8 +209,8 @@ if length("`distribution'")!=0 {
         local gammaCall rpoisson(`dist2')                
     }
     else if "`dist1'"=="t" {
-        if `jj'!=3 {
-            dis as error "`derr1' t, 1 `derr2' (degrees of freedom)."
+        if `jj'!=`expS' {
+            dis as error "`derr1' t `derrb', `cntS' `derr2' (degrees of freedom)."
             exit 200
         }
         if `dist2'<1 {
@@ -206,8 +220,8 @@ if length("`distribution'")!=0 {
         local gammaCall rt(`dist2')
     }
     else if "`dist1'"=="gamma" {
-        if `jj'!=4 {
-            dis as error "`derr1' gamma, 2 `derr2s' (shape and scale)."
+        if `jj'!=`expD' {
+            dis as error "`derr1' gamma `derrb', `cntD' `derr2' (shape and scale)."
             exit 200
         }
         if `dist2'<=0|`dist3'<=0 {
@@ -217,14 +231,15 @@ if length("`distribution'")!=0 {
         local gammaCall rgamma(`dist2',`dist3')
     }
     else if "`dist1'"=="special" {
-        local sperr "To define your own distribution you must specify"
-        if `jj'!=3 {
-            dis as error "`sperr' one valid variable with the empirical distribution"
+        local sperr1 "To define your own distribution you must specify"
+        local sperr2 "valid variable with the empirical distribution for each IV"
+        if `jj'!=`expS' {
+            dis as error "`sperr1' one `sperr2'"
             exit 200
         }
         cap sum `dist2'
         if _rc!=0 {
-            dis as error "`sperr' a valid variable with the empirical distribution"
+            dis as error "`sperr1' a `sperr2'"
             exit 200
         }
     }
@@ -396,6 +411,11 @@ if "`method'"=="uci" {
 if "`method'"=="ltz" {
 	tempvar const
 	qui gen `const'=1
+    if length("`distribution'")!=0&length("`graph'")!=0 {
+        dis as error "Graphing is not enabled with the distribution option"   
+        dis as error "For graphing and LTZ, omega and mu must be used"
+        exit 200
+    }
 
 	*****************************************************************************
 	*** (5a) Remove any colinear elements to ensure that matrices are invertible
@@ -445,21 +465,25 @@ if "`method'"=="ltz" {
 
 	scalar s1=rowsof(ZZ)
 	scalar s2=rowsof(ZX)
-	scalar s3=rowsof(omega_in)
 
 	local em "conformability errors" 
 
-	if s1!=s3 {
-		dis as err "Z'Z matrix is `=s1'*`=s1', Omega defined by user is `=s3'*`=s3'"
-		dis as err "Ensure that Omega is of the same dimension as Z'Z to avoid `em'"
-	}
-	if s2!=s3 {
-		dis as err "Z'X matrix is `=s2'*`=s2', Omega defined by user is `=s3'*`=s3'"
-		dis as err "Ensure that Omega is of the same dimension as Z'X to avoid `em'"
-	}
-
+    if length("`distribution'")==0 {
+        scalar s3=rowsof(omega_in)
+        local Oerr1 "Omega defined by user is"
+        local Oerr2 "Ensure that Omega is of the same dimension"
+        if s1!=s3 {
+    		dis as err "Z'Z matrix is `=s1'*`=s1', `Oerr1' `=s3'*`=s3'"
+    		dis as err "`Oerr2' as Z'Z to avoid `em'"
+    	}
+    	if s2!=s3 {
+    		dis as err "Z'X matrix is `=s2'*`=s2', `Oerr1' `=s3'*`=s3'"
+    		dis as err "`Oerr2' as Z'X to avoid `em'"
+    	}
+    }
     *****************************************************************************
-	*** (5c) Form estimates if non-normal distribution
+    *** (5c) Form estimates if non-normal distribution
+    ***      Coded based on the algorithm described on page 265 of REStat
 	*****************************************************************************
     if length("`distribution'")!=0 {
 
@@ -536,27 +560,57 @@ if "`method'"=="ltz" {
 
         foreach num of numlist 1(1)`nvars' {
             mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
-            
-            local lowerbound = betasSim[round(`iterations'*0.025),`num']
-            local upperbound = betasSim[round(`iterations'*0.975),`num']
-            dis "Bound for variable `num' is [`lowerbound',`upperbound']
-        }
-        exit
 
+            local l`num' = betasSim[round(`iterations'*0.025),`num']
+            local u`num' = betasSim[round(`iterations'*0.975),`num']
+            *local lowerbound = betasSim[round(`iterations'*0.025),`num']
+            *local upperbound = betasSim[round(`iterations'*0.975),`num']
+            *dis "Bound for variable `num' is [`lowerbound',`upperbound']
+        }
+
+        local Cint "Conley et al (2012)'s LTZ results"
+		dis in yellow _newline
+		dis "`Cint' (Non-Gaussian)" _col(55) "Number of obs =      " e(N)
+		dis in yellow in smcl "{hline 78}"
+		dis "Variable" _col(13) "Lower Bound" _col(29) "Upper Bound"
+		dis in yellow in smcl "{hline 78}"
+
+        local vars_final
+		local counter=0
+		foreach item in `e(instd)' `e(exogr)' _cons {
+			if _b[`item']!=0|_se[`item']!=0 {
+				local vars_final `vars_final' `item'
+				local ++counter
+			}
+		}
+		tokenize `vars_final'
+
+		foreach regressor of numlist 1(1)`nvars' {
+			dis in green "``regressor''" _col(13) `l`regressor'' _col(29) `u`regressor''
+			foreach var of local varlist2 {
+				if `"`var'"'==`"``regressor''"' {
+					ereturn scalar lb_`var'=`l`regressor''
+					ereturn scalar ub_`var'=`u`regressor''
+				}
+			}
+		}
+		dis in yellow in smcl "{hline 78}"
+        exit
     }
     *****************************************************************************
-	*** (5ci) Form augmented var-covar and coefficient matrices for graphing
+	*** (5di) Form augmented var-covar and coefficient matrices for graphing
 	*****************************************************************************
 	if length("`graph'")!=0 {
 		local Nomegas  : word count `graphomega'	
 		local Nmus     : word count `graphmu'
+        local Gerr1    "graphmu and graphomega"
 
 		if `Nomegas'==0|`Nmus'==0 {
-			dis as error "When specifing graph and ltz, the graphomega and graphmu options are required"
+			dis as error "When specifing graph and ltz, the `Gerr1' options are required"
 			exit 272
 		}
 		if `Nomegas'!=`Nmus' {
-			dis as error "graphmu and graphomega must take the same number of elements"
+			dis as error "`Gerr1' must take the same number of elements"
 			exit 272
 		}
 		matrix __graphmatLTZ = J(`Nomegas',4,.)
@@ -582,13 +636,15 @@ if "`method'"=="ltz" {
 			scalar s6=rowsof(muC)
 			scalar s7=colsof(muC)
 
+            local Oerr1 "defined by user is"
+            local Oerr2 "Ensure that Omega is of the same dimension"
 			if s1!=s4|s1!=s5 {
-				dis as err "Z'Z matrix is `=s1'*`=s1', graph omega (`j') defined by user is `=s4'*`=s5'"
-				dis as err "Ensure that Omega is of the same dimension as Z'Z to avoid `em'"
+				dis as err "Z'Z matrix is `=s1'*`=s1', graph omega (`j') `Oerr1' `=s4'*`=s5'"
+				dis as err "`Oerr2' as Z'Z to avoid `em'"
 			}
 			if s2!=s4|s2!=s5 {
-				dis as err "Z'X matrix is `=s2'*`=s2', graph omega (`j') defined by user is `=s4'*`=s5'"
-				dis as err "Ensure that Omega is of the same dimension as Z'X to avoid `em'"
+				dis as err "Z'X matrix is `=s2'*`=s2', graph omega (`j') `Oerr1' `=s4'*`=s5'"
+				dis as err "`Oerr2' as Z'X to avoid `em'"
 			}
 			if s7!=1 {
 				dis as error "graph mu (`j') does not have 1 column"
@@ -615,14 +671,14 @@ if "`method'"=="ltz" {
 		}
 	}
     *****************************************************************************
-	*** (5cii) Form augmented var-covar and coefficient matrices (see appendix)
+	*** (5dii) Form augmented var-covar and coefficient matrices (see appendix)
 	*****************************************************************************
 	qui estimates restore __iv
 	mat V1 = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omega_in * ZX*inv(ZX'*inv(ZZ)*ZX)
 	mat b1 = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * mu_in)'
 
 	*****************************************************************************
-	*** (5d) Determine lower and upper bounds
+	*** (5e) Determine lower and upper bounds
 	*****************************************************************************
 	mat CI  = -invnormal((1-`level')/2)
 	mat lb  = b1 - vecdiag(cholesky(diag(vecdiag(V1))))*CI

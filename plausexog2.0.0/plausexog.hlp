@@ -41,6 +41,7 @@ calculate bounds; default is {cmd:grid(2)}{p_end}
 {syntab :ltz}
 {synopt:{opt mu(string)}}Vector specifying mean of prior for support of gamma{p_end}
 {synopt:{opt omega(string)}}Matrix specifying variance-covariance for support of gamma{p_end}
+{synopt:{opt distribution(name, p1 [, p2])}}Allows for specification of gammas with arbitrary distributions.  Allowed distributions are: normal|uniform|chi2|poisson|t|gamma|special. Numerical parameters for distributions are specified as p1, and if necessary, p2.{p_end}
 
 {syntab :Graphing}
 {synopt:{opth gra:ph(varname)}}{p_end}
