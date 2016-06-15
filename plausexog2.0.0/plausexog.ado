@@ -56,7 +56,7 @@ tokenize `0'
 
 local method `1'
 macro shift
-dis "`0'"
+*dis "`0'"
 	
 if "`method'"!="uci"&"`method'"!="ltz"&"`method'"!="upwci" {
 	dis as error "Method of estimation must be specified."
@@ -162,7 +162,7 @@ if length("`distribution'")!=0 {
     local expS = 2+1*`count_iv'
     local cntD = 2*`count_iv'
     local cntS = 1*`count_iv'    
-    
+
     local derr1  "If specifying a distribution with"
     local derrb  "and `count_iv' instrument(s)"
     local derr2  "parameter(s) must be specified"
@@ -173,10 +173,9 @@ if length("`distribution'")!=0 {
             exit 200
         }
         foreach ivn of numlist 1(1)`count_iv' {
-            local ivl = `ivn'+1
-            local ivh = `ivn'+2
+            local ivl = `ivn'*2
+            local ivh = `ivn'*2+1
             local gammaCall`ivn' rnormal(`dist`ivl'', `dist`ivh'')
-            dis `gammaCall`ivn''
         }
     }
     else if "`dist1'"=="uniform" {
@@ -184,51 +183,68 @@ if length("`distribution'")!=0 {
             dis as error "`derr1' uniform `derrb', `cntD' `derr2' (min and max)."
             exit 200
         }
-        local gammaCall `dist2'+(`dist3'-`dist2')*runiform()
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'*2
+            local ivh = `ivn'*2+1
+            local gammaCall`ivn' `dist`ivl''+(`dist`ivh''-`dist`ivl'')*runiform()
+        }
     }
     else if "`dist1'"=="chi2" {
         if `jj'!=`expS' {
             dis as error "`derr1' chi2 `derrb', `cntS' `derr2' (degrees of freedom)."
             exit 200
         }
-        if `dist2'<1 {
-            dis as error "At least 1 degree of freedom must be specified for chi2"
-            exit 200
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'+1
+            if `dist`ivl''<1 {
+                dis as error "At least 1 degree of freedom must be specified for chi2"
+                exit 200
+            }
+            local gammaCall`ivn' rchi2(`dist`ivl'')
         }
-        local gammaCall rchi2(`dist2')        
     }
     else if "`dist1'"=="poisson" {
         if `jj'!=`expS' {
             dis as error "`derr1' poisson `derrb', `cntS' `derr2' (distribution mean)."
             exit 200
         }
-        if `dist2'<1 {
-            dis as error "At least a mean of 1 must be specified for poisson"
-            exit 200
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'+1
+            if `dist`ivl''<1 {
+                dis as error "At least a mean of 1 must be specified for poisson"
+                exit 200
+            }
+            local gammaCall`ivn' rpoisson(`dist`ivl'')
         }
-        local gammaCall rpoisson(`dist2')                
     }
     else if "`dist1'"=="t" {
         if `jj'!=`expS' {
             dis as error "`derr1' t `derrb', `cntS' `derr2' (degrees of freedom)."
             exit 200
         }
-        if `dist2'<1 {
-            dis as error "At least 1 degree of freedom must be specified for t"
-            exit 200
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'+1
+            if `dist`ivl''<1 {
+                dis as error "At least 1 degree of freedom must be specified for t"
+                exit 200
+            }
+            local gammaCall`ivn' rt(`dist`ivl'')
         }
-        local gammaCall rt(`dist2')
     }
     else if "`dist1'"=="gamma" {
         if `jj'!=`expD' {
             dis as error "`derr1' gamma `derrb', `cntD' `derr2' (shape and scale)."
             exit 200
         }
-        if `dist2'<=0|`dist3'<=0 {
-            dis as error "The shape and scale parameter for gamma must be > 0"
-            exit 200
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'*2
+            local ivh = `ivn'*2+1
+            if `dist`ivl''<=0|`dist`ivh''<=0 {
+                dis as error "The shape and scale parameter for gamma must be > 0"
+                exit 200
+            }
+            local gammaCall`ivn' rgamma(`dist`ivl'',`dist`ivh'')
         }
-        local gammaCall rgamma(`dist2',`dist3')
     }
     else if "`dist1'"=="special" {
         local sperr1 "To define your own distribution you must specify"
@@ -237,10 +253,13 @@ if length("`distribution'")!=0 {
             dis as error "`sperr1' one `sperr2'"
             exit 200
         }
-        cap sum `dist2'
-        if _rc!=0 {
-            dis as error "`sperr1' a `sperr2'"
-            exit 200
+        foreach ivn of numlist 1(1)`count_iv' {
+            local ivl = `ivn'+1
+            cap sum `dist`ivl''
+            if _rc!=0 {
+                dis as error "`sperr1' a `sperr2'"
+                exit 200
+            }
         }
     }
     else {
@@ -516,6 +535,7 @@ if "`method'"=="ltz" {
         if r(N)>=`iterations' {
             dis "Simulating.  This may take a moment..."
             local simvars
+            
             foreach num of numlist 1(1)`nvars' {
                 tempvar sim`num'
                 local simvars `simvars' `sim`num''
