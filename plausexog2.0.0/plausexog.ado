@@ -18,7 +18,7 @@ version highlights:
 cap program drop plausexog
 program plausexog, eclass
 version 8.0
-set matsize 1000
+set matsize 10000
 #delimit ;
 
 syntax anything(name=0 id="variable list")
@@ -510,12 +510,19 @@ if "`method'"=="ltz" {
             set seed `seed'
         }
         if "`dist1'"=="special" {
-            mkmat `dist2', matrix(specialgamma) nomissing
+            local distvars
+            foreach ivn of numlist 1(1)`count_iv' {
+                local dv = `ivn'+1
+                local distvars `distvars' `dist`dv''
+            }
+            mkmat `distvars', matrix(specialgamma) nomissing
             matrix mnsp = rowsof(specialgamma)
             local nsp   = mnsp[1,1]
-            matrix gammaDonors = J(`iterations',1,.)
-            foreach gd of numlist 1(1)`iterations' {
-                matrix gammaDonors[`gd',1]=specialgamma[ceil(runiform()*`nsp'),1]
+            matrix gammaDonors = J(`iterations',`count_iv',.)
+            foreach ivn of numlist 1(1)`count_iv' {
+                foreach gd of numlist 1(1)`iterations' {
+                    matrix gammaDonors[`gd',`ivn']=specialgamma[ceil(runiform()*`nsp'),`ivn']
+                }
             }
         }
         qui estimates restore __iv
@@ -525,7 +532,8 @@ if "`method'"=="ltz" {
 
         matrix mnvars = colsof(betas)
         local nvars   = mnvars[1,1]
-        matrix gamma  = J(`nvars',1,0)
+        **matrix gamma  = J(`nvars',1,0)
+        matrix gamma  = J(`count_exog',1,0)
         matrix A      = inv(ZX'*inv(ZZ)*ZX)*ZX'
         foreach num of numlist 1(1)`nvars' {
              matrix betasSim = J(`iterations',`nvars',.)
@@ -533,7 +541,7 @@ if "`method'"=="ltz" {
 
         qui count
         if r(N)>=`iterations' {
-            dis "Simulating.  This may take a moment..."
+            dis "Simulating 1.  This may take a moment..."
             local simvars
             
             foreach num of numlist 1(1)`nvars' {
@@ -544,8 +552,10 @@ if "`method'"=="ltz" {
 
             local iter = 1
             while `iter' <= `iterations' {
-                if "`dist1'"=="special" local gammaCall = gammaDonors[`iter',1]
-                matrix gamma[1,1]=`gammaCall'
+                foreach ivn of numlist 1(1)`count_iv' {
+                    if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
+                    matrix gamma[`ivn',1]=`gammaCall`ivn''
+                }
                 matrix F = A*gamma
                 foreach num of numlist 1(1)`nvars' {
                     qui sum `sim`num'' in `iter'
@@ -565,8 +575,10 @@ if "`method'"=="ltz" {
                     local simvars `simvars' `sim`num''
                 }
                 drawnorm `simvars', cov(varcovar) means(betas)
-                if "`dist1'"=="special" local gammaCall = gammaDonors[`iter',1]
-                matrix gamma[1,1]=`gammaCall'
+                foreach ivn of numlist 1(1)`count_iv' {
+                    if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
+                    matrix gamma[`ivn',1]=`gammaCall`ivn''
+                }
                 matrix F = A*gamma
                 foreach num of numlist 1(1)`nvars' {
                     qui sum `sim`num'' in 1
