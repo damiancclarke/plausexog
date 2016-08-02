@@ -39,7 +39,7 @@ syntax anything(name=0 id="variable list")
     VCE(string)
     DISTribution(string)
     seed(numlist min=1 max=1)
-    iterations(integer 1000) 
+    iterations(integer 5000) 
 	]
 	;
 #delimit cr
@@ -503,7 +503,7 @@ if "`method'"=="ltz" {
     *****************************************************************************
     *** (5c) Form estimates if non-normal distribution
     ***      Coded based on the algorithm described on page 265 of REStat
-	*****************************************************************************
+    ****************************************************************************
     if length("`distribution'")!=0 {
 
         if length("`seed'")!= 0 {
@@ -520,75 +520,51 @@ if "`method'"=="ltz" {
             local nsp   = mnsp[1,1]
             matrix gammaDonors = J(`iterations',`count_iv',.)
             foreach ivn of numlist 1(1)`count_iv' {
-                foreach gd of numlist 1(1)`iterations' {
+                local gd=1
+                while `gd'<`iterations' {
                     matrix gammaDonors[`gd',`ivn']=specialgamma[ceil(runiform()*`nsp'),`ivn']
+                    local ++gd
                 }
             }
         }
         qui estimates restore __iv
         qui estat vce
         matrix varcovar = r(V)
-        mata: st_matrix("betas", select(st_matrix("e(b)"), st_matrix("e(b)") :!=0))
 
+        mata: st_matrix("betas", select(st_matrix("e(b)"), st_matrix("e(b)") :!=0))
         matrix mnvars = colsof(betas)
         local nvars   = mnvars[1,1]
+        local betas 
+        foreach num of numlist 1(1)`nvars' {
+            local betas `betas' `=betas[1,`num']'
+        }
+        
+
         **matrix gamma  = J(`nvars',1,0)
         matrix gamma  = J(`count_exog',1,0)
         matrix A      = inv(ZX'*inv(ZZ)*ZX)*ZX'
+       dis "Simulation `iterations' iterations.  This may take a moment."
+
         foreach num of numlist 1(1)`nvars' {
              matrix betasSim = J(`iterations',`nvars',.)
         }
 
-        qui count
-        if r(N)>=`iterations' {
-            dis "Simulating 1.  This may take a moment..."
-            local simvars
-            
+        local iter = 1
+                while `iter' <= `iterations' {
+            foreach ivn of numlist 1(1)`count_iv' {
+                if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
+                matrix gamma[`ivn',1]=`gammaCall`ivn''
+            }
+            matrix F = A*gamma
+            qui rmvnormal, mean(`betas') sigma(varcovar)
+            matrix gsims = r(rmvnormal)
             foreach num of numlist 1(1)`nvars' {
-                tempvar sim`num'
-                local simvars `simvars' `sim`num''
+                local input = gsims[1,`num']
+                matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
             }
-            drawnorm `simvars', cov(varcovar) means(betas)
-
-            local iter = 1
-            while `iter' <= `iterations' {
-                foreach ivn of numlist 1(1)`count_iv' {
-                    if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
-                    matrix gamma[`ivn',1]=`gammaCall`ivn''
-                }
-                matrix F = A*gamma
-                foreach num of numlist 1(1)`nvars' {
-                    qui sum `sim`num'' in `iter'
-                    local input = r(mean)
-                    matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
-                }
-                local ++iter
-            }
+            local ++iter
         }
-        else {
-            dis "Simulating.  This may take a moment..."
-            local iter = 1
-            while `iter' <= `iterations' {
-                local simvars
-                foreach num of numlist 1(1)`nvars' {
-                    tempvar sim`num'
-                    local simvars `simvars' `sim`num''
-                }
-                drawnorm `simvars', cov(varcovar) means(betas)
-                foreach ivn of numlist 1(1)`count_iv' {
-                    if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
-                    matrix gamma[`ivn',1]=`gammaCall`ivn''
-                }
-                matrix F = A*gamma
-                foreach num of numlist 1(1)`nvars' {
-                    qui sum `sim`num'' in 1
-                    local input = r(mean)
-                    matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
-                }
-                drop `simvars'
-                local ++iter
-            }
-        }
+        
 
         foreach num of numlist 1(1)`nvars' {
             mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
@@ -597,7 +573,7 @@ if "`method'"=="ltz" {
             local u`num' = betasSim[round(`iterations'*0.975),`num']
             *local lowerbound = betasSim[round(`iterations'*0.025),`num']
             *local upperbound = betasSim[round(`iterations'*0.975),`num']
-            *dis "Bound for variable `num' is [`lowerbound',`upperbound']
+            *dis "Bound for variable `num' is [`lowerbound',`upperbound']"
         }
 
         local Cint "Conley et al (2012)'s LTZ results"
