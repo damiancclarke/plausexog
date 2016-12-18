@@ -1,8 +1,8 @@
 *! plausexog: Estimating bounds with a plausibly exogenous exclusion restriction  
-*! Version 2.0.0 junio 7, 2016 @ 10:12:45
+*! Version 2.0.1 diciembre 18, 2016 @ 12:58:34
 *! Author: Damian Clarke (application of code and ideas of Conley et al., 2012)
 *! Much of the heart of this code comes from the Conley et al implementation
-*! Contact: damian.clarke@economics.ox.ac.uk
+*! Contact: damian.clarke@usach.cl
 
 /*
 version highlights:
@@ -13,6 +13,7 @@ version highlights:
 1.1.0: Weighting incorporated
 1.2.0: Bug fix: very long names passed through syntax
 2.0.0: Now Allowing for all arbitrary distributions with simulation algorithm
+2.0.1: Graph issue when direct effect is negative for UCI (github issue #2)
 */
 
 cap program drop plausexog
@@ -25,21 +26,21 @@ syntax anything(name=0 id="variable list")
 	[if] [in]
 	[fweight pweight aweight iweight]
 	[,
-	grid(real 2)
-	gmin(numlist)
-	gmax(numlist)
-	level(real 0.95)
-	omega(string)
- 	mu(string)
-	GRAph(varlist)
-	GRAPHOMega(namelist min=2 max=22)
-	graphmu(namelist min=2 max=22)
-	graphdelta(numlist)
-	graphopts(string)
-    VCE(string)
-    DISTribution(string)
-    seed(numlist min=1 max=1)
-    iterations(integer 5000) 
+         grid(real 2)
+         gmin(numlist)
+         gmax(numlist)
+         level(real 0.95)
+         omega(string)
+         mu(string)
+         GRAph(varlist)
+         GRAPHOMega(namelist min=2 max=22)
+         graphmu(namelist min=2 max=22)
+         graphdelta(numlist)
+         graphopts(string)
+         VCE(string)
+         DISTribution(string)
+         seed(numlist min=1 max=1)
+         iterations(integer 5000) 
 	]
 	;
 #delimit cr
@@ -56,88 +57,88 @@ tokenize `0'
 
 local method `1'
 macro shift
-*dis "`0'"
+dis "`0'"
 	
 if "`method'"!="uci"&"`method'"!="ltz"&"`method'"!="upwci" {
-	dis as error "Method of estimation must be specified."
-	dis "Re-specify using uci, ltz or upcwi (see help file for more detail)"
-	exit 200
+    dis as error "Method of estimation must be specified."
+    dis "Re-specify using uci, ltz or upcwi (see help file for more detail)"
+    exit 200
 }
 
-	
+
 if `equal'!=1|`lparen'!=1|`rparen'!=1 {
-	dis as error "Specification of varlist is incorrect."
-	dis as error "Ensure that syntax is: method yvar [exog] (endog=iv), [opts]"	
-	exit 200
+    dis as error "Specification of varlist is incorrect."
+    dis as error "Ensure that syntax is: method yvar [exog] (endog=iv), [opts]"	
+    exit 200
 }
-	
+
 local yvar `1'
 macro shift
 
 local varlist1
 while regexm(`"`1'"', "\(")==0 {
-	local varlist1 `varlist1' `1'
-	macro shift
+    local varlist1 `varlist1' `1'
+    macro shift
 }
 
 local varlist2
 while regexm(`"`1'"', "=")==0 {
-	local var=subinstr(`"`1'"', "(", "", 1)
-	local varlist2 `varlist2' `var'
-	macro shift
+    local var=subinstr(`"`1'"', "(", "", 1)
+    local varlist2 `varlist2' `var'
+    macro shift
 }	
 
 local varlist_iv
 while regexm(`"`1'"', "\)")==0 {
-	local var=subinstr(`"`1'"', "=", "", 1)
-	local varlist_iv `varlist_iv' `var'
-	macro shift
+    local var=subinstr(`"`1'"', "=", "", 1)
+    local varlist_iv `varlist_iv' `var'
+    macro shift
 }
 
 foreach list in varlist1 varlist2 varlist_iv {
-	fvexpand ``list''
-	local `list' `r(varlist)'
+    fvexpand ``list''
+    local `list' `r(varlist)'
 }
 
 local allout `varlist1' `varlist2' constant
 local allexog `varlist1' `varlist_iv' constant
-	
+
 local count2     : word count `varlist2'
 local count_iv	 : word count `varlist_iv' 
 local count_all  : word count `allout'
 local count_exog : word count `allexog'
 local countmin   : word count `gmin'
 local countmax   : word count `gmax'
-	
-if `count2'>`count_iv' {
-	dis as error "Specify at least as many instruments as endogenous variables"
-	exit 200	
-}
-	
-if "`method'"=="uci" {
-	if `countmin'!=`count_iv'|`countmax'!=`count_iv' {
-		dis as error "You must define as many gamma values as instrumental variables"
-		dis "If instruments are believed to be valid, specify gamma=0 for gmin and gmax"
-		exit 200	
-	}
 
-	foreach item in min max {
-		local count=1
-		foreach num of numlist `g`item'' {
-			local g`count'`item'=`num'
-			local ++count
-		}
-	}
+if `count2'>`count_iv' {
+    dis as error "Specify at least as many instruments as endogenous variables"
+    exit 200	
+}
+
+if "`method'"=="uci" {
+    if `countmin'!=`count_iv'|`countmax'!=`count_iv' {
+        dis as error "You must define as many gamma values as instrumental variables"
+        dis "If instruments are believed to be valid, specify gamma=0 for gmin and gmax"
+        exit 200	
+    }
+    
+    foreach item in min max {
+        local count=1
+        foreach num of numlist `g`item'' {
+            local g`count'`item'=`num'
+            local ++count
+        }
+    }
 }
 if "`method'"=="ltz" & length("`distribution'")==0 {
-	if length("`omega'")==0|length("`mu'")==0 {
-		dis as error "For ltz, omega and mu matrices must be defined"
-		exit 200
-	}
-	else {
-		mat def omega_in=`omega'
-		mat def mu_in=`mu'
-	}
+    if length("`omega'")==0|length("`mu'")==0 {
+        dis as error "For ltz, omega and mu matrices must be defined"
+        exit 200
+    }
+    else {
+        mat def omega_in=`omega'
+        mat def mu_in=`mu'
+    }
 }
 
 if length("`distribution'")!=0 {
@@ -151,7 +152,7 @@ if length("`distribution'")!=0 {
     }
     local distribution: subinstr local distribution "," " , ", all
     local distcnt : list sizeof distribution
-
+    
     local jj=1
     foreach j of numlist 1(1)`distcnt' {
         local dist`jj': word `j' of `distribution'
@@ -283,9 +284,9 @@ local cIV   : word count `varlist_iv'
 
 *dis "Trying to run intial reg with `cEx' exog vars `cEn' endog and `cIV' insts"	
 qui ivregress 2sls `yvar' `varlist1' (`varlist2'=`varlist_iv') `if' `in'  /*
- */ [`weight' `exp'], vce(`vce')
+*/ [`weight' `exp'], vce(`vce')
 qui estimates store __iv
-	
+
 ********************************************************************************
 *** (3) Union of Confidence Intervals approach (uci)
 ***     Here we are creating a grid and testing for each possible gamma combo:
@@ -294,133 +295,139 @@ qui estimates store __iv
 ***	  this in quite a nice way.
 ********************************************************************************
 if "`method'"=="uci" {
+    
+    local points=1
+    if length("`graph'")!=0 {
+        local points=4
+        matrix __graphmat = J(`points',4,.)
+    }		
+    
+    foreach gnum of numlist 1(1)`points' {
+        local cRatio =	`gnum'/`points'
+        foreach item in min max {
+            local count=1
+            foreach num of numlist `g`item'' {
+                local g`count'`item'l=`num'*`cRatio'
+                local ++count
+            }
+        }
+        **************************************************************************
+        *** (3a) Iterate over iter, which is each possible combination of gammas
+        **************************************************************************
+        local iter=1
+        while `iter' <= (`grid'^`count_iv') {
+            local R=`iter'-1
+            local w=`count_iv'
+            
+            **Create weighting factor to grid gamma.  If grid==2, gamma={max,min}
+            while `w'>0 {
+                local a`w'     = floor(`R'/(`grid'^(`w'-1)))
+                local R        = `R'-(`grid'^(`w'-1))*`a`w''
+                local gamma`w' = `g`w'minl' + ((`g`w'maxl'-`g`w'minl')/(`grid'-1))*`a`w''
+                
+                local --w
+            }
+            
+            tempvar Y_G
+            qui gen `Y_G'=`yvar'
+            
+            
+            local count=1
+            foreach Z of local varlist_iv {
+                qui replace `Y_G'=`Y_G'-`Z'*`gamma`count''
+                local ++count
+            }
+            
+            ***********************************************************************
+            *** (3b) Estimate model based on assumed gammas, memoize conf intervals
+            ***********************************************************************
+            qui ivregress 2sls `Y_G' `varlist1' (`varlist2'=`varlist_iv') `if' /*
+            */ `in' [`weight' `exp'], vce(`vce')
+            
+            ***********************************************************************
+            *** (3c) Check if variable is not dropped (ie dummies) and results
+            ***********************************************************************
+            mat b2SLS   = e(b)
+            mat cov2SLS = e(V)
 
-	local points=1
-	if length("`graph'")!=0 {
-		local points=4
-		matrix __graphmat = J(`points',4,.)
-	}		
-		
-	foreach gnum of numlist 1(1)`points' {
-		local cRatio =	`gnum'/`points'
-		foreach item in min max {
-		local count=1
-		foreach num of numlist `g`item'' {
-			local g`count'`item'l=`num'*`cRatio'
-			local ++count
-			}
-		}
-		**************************************************************************
-		*** (3a) Iterate over iter, which is each possible combination of gammas
-		**************************************************************************
-		local iter=1
-		while `iter' <= (`grid'^`count_iv') {
-			local R=`iter'-1
-			local w=`count_iv'
+            local vars_final
+            local counter=0
+            foreach item in `e(exogr)' `e(instd)' _cons {
+                if _b[`item']!=0|_se[`item']!=0 {
+                    local vars_final `vars_final' `item'
+                    local ++counter
+                }
+            }
+            ereturn scalar numvars = `counter'
+            
+            mat b2SLSf   = J(1,`counter',.)
+            mat se2SLSf  = J(`counter',`counter',.)
+            tokenize `vars_final'
+            
+            foreach num of numlist 1(1)`counter' {
+                mat b2SLSf[1,`num']=_b[``num'']
+                mat se2SLSf[`num',`num']=_se[``num'']
+            }
+            mat CI    = -invnormal((1 - `level')/2)
+            mat ltemp = vec(b2SLSf) - CI*vec(vecdiag(se2SLSf))
+            mat utemp = vec(b2SLSf) + CI*vec(vecdiag(se2SLSf))
+            
+            ***********************************************************************
+            *** (3d) Check if CI from model is lowest/highest in union (so far)
+            ***********************************************************************
+            foreach regressor of numlist 1(1)`counter' {
+                if `iter'==1 {
+                    local l`regressor'=.
+                    local u`regressor'=.	
+                }
+                local l`regressor' = min(`l`regressor'',ltemp[`regressor',1])
+                local u`regressor' = max(`u`regressor'',utemp[`regressor',1])
+            }
+            local ++iter
+        }
+        
+        if `gnum'==`points' {
+            dis in yellow _newline
+            dis "Conley et al (2012)'s UCI results" _col(55) "Number of obs =      " e(N)
+            dis in yellow in smcl "{hline 78}"
+            dis "Variable" _col(13) "Lower Bound" _col(29) "Upper Bound"
+            dis in yellow in smcl "{hline 78}"
+            
+            tokenize `vars_final'
+            
+            foreach regressor of numlist 1(1)`counter' {
+                dis in green "``regressor''" _col(13) `l`regressor'' _col(29) `u`regressor''
+                foreach var of local varlist2 {
+                    if `"`var'"'==`"``regressor''"' {
+                        ereturn scalar lb_`var'=`l`regressor''
+                        ereturn scalar ub_`var'=`u`regressor''
+                    }
+                }
+            }
+            dis in yellow in smcl "{hline 78}"
+            if length("`graph'")!=0 {
+                dis "Graph add for value" `cRatio'*`g1max'
+                dis "Should add for value" `cRatio'*`g1min'
+                matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
+                matrix __graphmat[`gnum',2]=.
+                matrix __graphmat[`gnum',3]=e(lb_`graph')
+                matrix __graphmat[`gnum',4]=e(ub_`graph')
+            }
 
-			**Create weighting factor to grid gamma.  If grid==2, gamma={max,min}
-			while `w'>0 {
-				local a`w'     = floor(`R'/(`grid'^(`w'-1)))
-				local R        = `R'-(`grid'^(`w'-1))*`a`w''
-				local gamma`w' = `g`w'minl' + ((`g`w'maxl'-`g`w'minl')/(`grid'-1))*`a`w''
-				local --w
-			}
-				
-			tempvar Y_G
-			qui gen `Y_G'=`yvar'
-
-				
-			local count=1
-			foreach Z of local varlist_iv {
-				qui replace `Y_G'=`Y_G'-`Z'*`gamma`count''
-				local ++count
-			}
-
-			***********************************************************************
-			*** (3b) Estimate model based on assumed gammas, memoize conf intervals
-			***********************************************************************
-			qui ivregress 2sls `Y_G' `varlist1' (`varlist2'=`varlist_iv') `if' /*
-			*/ `in' [`weight' `exp'], vce(`vce')
-				
-			***********************************************************************
-			*** (3c) Check if variable is not dropped (ie dummies) and results
-			***********************************************************************
-			mat b2SLS   = e(b)
-			mat cov2SLS = e(V)
-
-			local vars_final
-			local counter=0
-			foreach item in `e(exogr)' `e(instd)' _cons {
-				if _b[`item']!=0|_se[`item']!=0 {
-					local vars_final `vars_final' `item'
-					local ++counter
-				}
-			}
-			ereturn scalar numvars = `counter'
-			
-			mat b2SLSf   = J(1,`counter',.)
-			mat se2SLSf =	J(`counter',`counter',.)
-			tokenize `vars_final'
-
-			foreach num of numlist 1(1)`counter' {
-				mat b2SLSf[1,`num']=_b[``num'']
-				mat se2SLSf[`num',`num']=_se[``num'']
-			}
-			mat CI    = -invnormal((1 - `level')/2)
-			mat ltemp = vec(b2SLSf) - CI*vec(vecdiag(se2SLSf))
-			mat utemp = vec(b2SLSf) + CI*vec(vecdiag(se2SLSf))
-
-			***********************************************************************
-			*** (3d) Check if CI from model is lowest/highest in union (so far)
-			***********************************************************************
-			foreach regressor of numlist 1(1)`counter' {
-				if `iter'==1 {
-					local l`regressor'=.
-					local u`regressor'=.	
-				}
-				local l`regressor' = min(`l`regressor'',ltemp[`regressor',1])
-				local u`regressor' = max(`u`regressor'',utemp[`regressor',1])
-			}
-			local ++iter
-		}
-
-		if `gnum'==`points' {
-			dis in yellow _newline
-			dis "Conley et al (2012)'s UCI results" _col(55) "Number of obs =      " e(N)
-			dis in yellow in smcl "{hline 78}"
-			dis "Variable" _col(13) "Lower Bound" _col(29) "Upper Bound"
-			dis in yellow in smcl "{hline 78}"
-
-			tokenize `vars_final'
-
-			foreach regressor of numlist 1(1)`counter' {
-				dis in green "``regressor''" _col(13) `l`regressor'' _col(29) `u`regressor''
-				foreach var of local varlist2 {
-					if `"`var'"'==`"``regressor''"' {
-						ereturn scalar lb_`var'=`l`regressor''
-						ereturn scalar ub_`var'=`u`regressor''
-					}
-				}
-			}
-			dis in yellow in smcl "{hline 78}"
-			if length("`graph'")!=0 {		
-				matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
-				matrix __graphmat[`gnum',2]=.
-				matrix __graphmat[`gnum',3]=e(lb_`graph')
-				matrix __graphmat[`gnum',4]=e(ub_`graph')
-			}
-		}
-		else if `gnum'<`points' {
-			matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
-			tokenize `vars_final'	
-			foreach regressor of numlist 1(1)`counter' {
-				if `"`graph'"'==`"``regressor''"' {
-					matrix __graphmat[`gnum',3]=`l`regressor''
-					matrix __graphmat[`gnum',4]=`u`regressor''
-				}
-			}
-		}
-	}
+        }
+        else if `gnum'<`points' {
+            dis "Graph add for value" `cRatio'*`g1max'
+            dis "Should add for value" `cRatio'*`g1min'
+            matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
+            tokenize `vars_final'	
+            foreach regressor of numlist 1(1)`counter' {
+                if `"`graph'"'==`"``regressor''"' {
+                    matrix __graphmat[`gnum',3]=`l`regressor''
+                    matrix __graphmat[`gnum',4]=`u`regressor''
+                }
+            }
+        }
+    }
 }
 
 
@@ -428,76 +435,76 @@ if "`method'"=="uci" {
 *** (5) Local to Zero approach (ltz)
 ********************************************************************************    
 if "`method'"=="ltz" {
-	tempvar const
-	qui gen `const'=1
+    tempvar const
+    qui gen `const'=1
     if length("`distribution'")!=0&length("`graph'")!=0 {
         dis as error "Graphing is not enabled with the distribution option"   
         dis as error "For graphing and LTZ, omega and mu must be used"
         exit 200
     }
+    
+    *****************************************************************************
+    *** (5a) Remove any colinear elements to ensure that matrices are invertible
+    *** For the case of the Z vector, this requires running the first stage regs	
+    *****************************************************************************		
+    unab testvars: `varlist1'		
+    local usevars1
+    foreach var of local testvars {
+        cap dis _b[`var']
+        if _rc!=0 continue
+        if _b[`var']!=0 local usevars1 `usevars1' `var'
+    }
+    
+    unab testvars: `varlist2'
+    local usevars2
+    foreach var of local testvars {
+        cap dis _b[`var']
+        if _rc!=0 continue
+        if _b[`var']!=0 local usevars2 `usevars2' `var'
+    }
+    
+    *****************************************************************************
+    *** (5b) Form moment matrices: ZX and ZZ
+    *****************************************************************************
+    mat ZX = J(1,`count_all',.)
+    mat ZZ = J(1,`count_exog',.)
 
-	*****************************************************************************
-	*** (5a) Remove any colinear elements to ensure that matrices are invertible
-	*** For the case of the Z vector, this requires running the first stage regs	
-	*****************************************************************************		
-	unab testvars: `varlist1'		
-	local usevars1
-	foreach var of local testvars {
-		cap dis _b[`var']
-		if _rc!=0 continue
-		if _b[`var']!=0 local usevars1 `usevars1' `var'
-	}
-
-	unab testvars: `varlist2'
-	local usevars2
-	foreach var of local testvars {
-		cap dis _b[`var']
-		if _rc!=0 continue
-		if _b[`var']!=0 local usevars2 `usevars2' `var'
-	}
-
-	*****************************************************************************
-	*** (5b) Form moment matrices: Z'X and Z'Z
-	*****************************************************************************
-	mat ZX = J(1,`count_all',.)
-	mat ZZ = J(1,`count_exog',.)
-
-	unab allvars: `varlist_iv' `usevars1' `const'
-	tokenize `allvars'
-	mat vecaccum a = `1' `usevars2' `usevars1' `if' `in'
-	mat ZX = a
-	while length("`2'")!= 0 {		
-		mat vecaccum a = `2' `usevars2' `usevars1' `if' `in'
-		mat ZX         = ZX\a
-		macro shift		
-	}
-
-	tokenize `allvars'
-	mat vecaccum a = `1' `varlist_iv' `usevars1' `if' `in'
-	mat ZZ = a
-
-	while length("`2'")!= 0 {	
-		mat vecaccum a = `2' `varlist_iv' `usevars1' `if' `in'
-		mat ZZ         = ZZ\a
-		macro shift
-	}
-
-	scalar s1=rowsof(ZZ)
-	scalar s2=rowsof(ZX)
-
-	local em "conformability errors" 
-
+    unab allvars: `varlist_iv' `usevars1' `const'
+    tokenize `allvars'
+    mat vecaccum a = `1' `usevars2' `usevars1' `if' `in'
+    mat ZX = a
+    while length("`2'")!= 0 {		
+        mat vecaccum a = `2' `usevars2' `usevars1' `if' `in'
+        mat ZX         = ZX\a
+        macro shift		
+    }
+    
+    tokenize `allvars'
+    mat vecaccum a = `1' `varlist_iv' `usevars1' `if' `in'
+    mat ZZ = a
+    
+    while length("`2'")!= 0 {	
+        mat vecaccum a = `2' `varlist_iv' `usevars1' `if' `in'
+        mat ZZ         = ZZ\a
+        macro shift
+    }
+    
+    scalar s1=rowsof(ZZ)
+    scalar s2=rowsof(ZX)
+    
+    local em "conformability errors" 
+    
     if length("`distribution'")==0 {
         scalar s3=rowsof(omega_in)
         local Oerr1 "Omega defined by user is"
         local Oerr2 "Ensure that Omega is of the same dimension"
         if s1!=s3 {
-    		dis as err "Z'Z matrix is `=s1'*`=s1', `Oerr1' `=s3'*`=s3'"
-    		dis as err "`Oerr2' as Z'Z to avoid `em'"
+            dis as err "Z'Z matrix is `=s1'*`=s1', `Oerr1' `=s3'*`=s3'"
+            dis as err "`Oerr2' as Z'Z to avoid `em'"
     	}
     	if s2!=s3 {
-    		dis as err "Z'X matrix is `=s2'*`=s2', `Oerr1' `=s3'*`=s3'"
-    		dis as err "`Oerr2' as Z'X to avoid `em'"
+            dis as err "Z'X matrix is `=s2'*`=s2', `Oerr1' `=s3'*`=s3'"
+            dis as err "`Oerr2' as Z'X to avoid `em'"
     	}
     }
     *****************************************************************************
@@ -506,111 +513,111 @@ if "`method'"=="ltz" {
     ****************************************************************************
     if length("`distribution'")!=0 {
 
-        if length("`seed'")!= 0 {
-            set seed `seed'
-        }
-        if "`dist1'"=="special" {
-            local distvars
-            foreach ivn of numlist 1(1)`count_iv' {
-                local dv = `ivn'+1
-                local distvars `distvars' `dist`dv''
-            }
-            mkmat `distvars', matrix(specialgamma) nomissing
-            matrix mnsp = rowsof(specialgamma)
-            local nsp   = mnsp[1,1]
-            matrix gammaDonors = J(`iterations',`count_iv',.)
-            foreach ivn of numlist 1(1)`count_iv' {
-                local gd=1
-                while `gd'<`iterations' {
-                    matrix gammaDonors[`gd',`ivn']=specialgamma[ceil(runiform()*`nsp'),`ivn']
-                    local ++gd
-                }
-            }
-        }
-        qui estimates restore __iv
-        qui estat vce
-        matrix varcovar = r(V)
-
-        mata: st_matrix("betas", select(st_matrix("e(b)"), st_matrix("e(b)") :!=0))
-        matrix mnvars = colsof(betas)
-        local nvars   = mnvars[1,1]
-        local betas 
-        foreach num of numlist 1(1)`nvars' {
-            local betas `betas' `=betas[1,`num']'
-        }
-        
-
-        **matrix gamma  = J(`nvars',1,0)
-        matrix gamma  = J(`count_exog',1,0)
-        matrix A      = inv(ZX'*inv(ZZ)*ZX)*ZX'
-       dis "Simulation `iterations' iterations.  This may take a moment."
-
-        foreach num of numlist 1(1)`nvars' {
-             matrix betasSim = J(`iterations',`nvars',.)
-        }
-
-        local iter = 1
-                while `iter' <= `iterations' {
-            foreach ivn of numlist 1(1)`count_iv' {
-                if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
-                matrix gamma[`ivn',1]=`gammaCall`ivn''
-            }
-            matrix F = A*gamma
-            qui rmvnormal, mean(`betas') sigma(varcovar)
-            matrix gsims = r(rmvnormal)
-            foreach num of numlist 1(1)`nvars' {
-                local input = gsims[1,`num']
-                matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
-            }
-            local ++iter
-        }
-        
-
-        foreach num of numlist 1(1)`nvars' {
-            mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
-
-            local l`num' = betasSim[round(`iterations'*0.025),`num']
-            local u`num' = betasSim[round(`iterations'*0.975),`num']
-            *local lowerbound = betasSim[round(`iterations'*0.025),`num']
-            *local upperbound = betasSim[round(`iterations'*0.975),`num']
-            *dis "Bound for variable `num' is [`lowerbound',`upperbound']"
-        }
-
-        local Cint "Conley et al (2012)'s LTZ results"
-		dis in yellow _newline
-		dis "`Cint' (Non-Gaussian)" _col(55) "Number of obs =      " e(N)
-		dis in yellow in smcl "{hline 78}"
-		dis "Variable" _col(13) "Lower Bound" _col(29) "Upper Bound"
-		dis in yellow in smcl "{hline 78}"
-
-        local vars_final
-		local counter=0
-		foreach item in `e(instd)' `e(exogr)' _cons {
-			if _b[`item']!=0|_se[`item']!=0 {
-				local vars_final `vars_final' `item'
-				local ++counter
-			}
-		}
-		tokenize `vars_final'
-
-		foreach regressor of numlist 1(1)`nvars' {
-			dis in green "``regressor''" _col(13) `l`regressor'' _col(29) `u`regressor''
-			foreach var of local varlist2 {
-				if `"`var'"'==`"``regressor''"' {
-					ereturn scalar lb_`var'=`l`regressor''
-					ereturn scalar ub_`var'=`u`regressor''
-				}
-			}
-		}
-		dis in yellow in smcl "{hline 78}"
-        exit
+    if length("`seed'")!= 0 {
+        set seed `seed'
     }
-    *****************************************************************************
-	*** (5di) Form augmented var-covar and coefficient matrices for graphing
-	*****************************************************************************
-	if length("`graph'")!=0 {
-		local Nomegas  : word count `graphomega'	
-		local Nmus     : word count `graphmu'
+    if "`dist1'"=="special" {
+        local distvars
+        foreach ivn of numlist 1(1)`count_iv' {
+            local dv = `ivn'+1
+            local distvars `distvars' `dist`dv''
+        }
+        mkmat `distvars', matrix(specialgamma) nomissing
+        matrix mnsp = rowsof(specialgamma)
+        local nsp   = mnsp[1,1]
+        matrix gammaDonors = J(`iterations',`count_iv',.)
+        foreach ivn of numlist 1(1)`count_iv' {
+            local gd=1
+            while `gd'<`iterations' {
+                matrix gammaDonors[`gd',`ivn']=specialgamma[ceil(runiform()*`nsp'),`ivn']
+                local ++gd
+            }
+        }
+    }
+    qui estimates restore __iv
+    qui estat vce
+    matrix varcovar = r(V)
+    
+    mata: st_matrix("betas", select(st_matrix("e(b)"), st_matrix("e(b)") :!=0))
+    matrix mnvars = colsof(betas)
+    local nvars   = mnvars[1,1]
+    local betas 
+    foreach num of numlist 1(1)`nvars' {
+        local betas `betas' `=betas[1,`num']'
+    }
+    
+    
+    **matrix gamma  = J(`nvars',1,0)
+    matrix gamma  = J(`count_exog',1,0)
+    matrix A      = inv(ZX'*inv(ZZ)*ZX)*ZX'
+    dis "Simulating `iterations' iterations.  This may take a moment."
+
+    foreach num of numlist 1(1)`nvars' {
+        matrix betasSim = J(`iterations',`nvars',.)
+    }
+
+    local iter = 1
+    while `iter' <= `iterations' {
+        foreach ivn of numlist 1(1)`count_iv' {
+            if "`dist1'"=="special" local gammaCall`ivn' = gammaDonors[`iter',`ivn']
+            matrix gamma[`ivn',1]=`gammaCall`ivn''
+        }
+        matrix F = A*gamma
+        qui rmvnormal, mean(`betas') sigma(varcovar)
+        matrix gsims = r(rmvnormal)
+        foreach num of numlist 1(1)`nvars' {
+            local input = gsims[1,`num']
+            matrix betasSim[`iter',`num'] = `input'+F[`num',1] 
+        }
+        local ++iter
+    }
+
+
+    foreach num of numlist 1(1)`nvars' {
+        mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
+        
+        local l`num' = betasSim[round(`iterations'*0.025),`num']
+        local u`num' = betasSim[round(`iterations'*0.975),`num']
+        *local lowerbound = betasSim[round(`iterations'*0.025),`num']
+        *local upperbound = betasSim[round(`iterations'*0.975),`num']
+        *dis "Bound for variable `num' is [`lowerbound',`upperbound']"
+    }
+
+    local Cint "Conley et al (2012)'s LTZ results"
+    dis in yellow _newline
+    dis "`Cint' (Non-Gaussian)" _col(55) "Number of obs =      " e(N)
+    dis in yellow in smcl "{hline 78}"
+    dis "Variable" _col(13) "Lower Bound" _col(29) "Upper Bound"
+    dis in yellow in smcl "{hline 78}"
+
+    local vars_final
+    local counter=0
+    foreach item in `e(instd)' `e(exogr)' _cons {
+        if _b[`item']!=0|_se[`item']!=0 {
+            local vars_final `vars_final' `item'
+            local ++counter
+        }
+    }
+    tokenize `vars_final'
+
+    foreach regressor of numlist 1(1)`nvars' {
+        dis in green "``regressor''" _col(13) `l`regressor'' _col(29) `u`regressor''
+        foreach var of local varlist2 {
+            if `"`var'"'==`"``regressor''"' {
+                ereturn scalar lb_`var'=`l`regressor''
+                ereturn scalar ub_`var'=`u`regressor''
+            }
+        }
+    }
+    dis in yellow in smcl "{hline 78}"
+    exit
+}
+*****************************************************************************
+*** (5di) Form augmented var-covar and coefficient matrices for graphing
+*****************************************************************************
+if length("`graph'")!=0 {
+    local Nomegas  : word count `graphomega'	
+    local Nmus     : word count `graphmu'
         local Gerr1    "graphmu and graphomega"
 
 		if `Nomegas'==0|`Nmus'==0 {
@@ -711,7 +718,8 @@ if length("`graph'")!=0 {
 			*/ xtitle("{&delta}") title("Union of Confidence Interval Approach") /*
 			*/ note("Methodology described in Conley et al. (2012)")
 		}
-	
+                mat list __graphmat
+                
 		twoway line __graphmat3 __graphmat1, lpattern(dash) lcolor(black) || ///
 		line       __graphmat4 __graphmat1, lpattern(dash) lcolor(black)     ///
 		legend(order(1 "Upper Bound (UCI)" 2 "Lower Bound (UCI)"))           ///
