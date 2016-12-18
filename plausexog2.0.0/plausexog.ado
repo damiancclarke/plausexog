@@ -286,6 +286,11 @@ local cIV   : word count `varlist_iv'
 qui ivregress 2sls `yvar' `varlist1' (`varlist2'=`varlist_iv') `if' `in'  /*
 */ [`weight' `exp'], vce(`vce')
 qui estimates store __iv
+if length("`graph'")!=0 {
+    local CI    = -invnormal((1 - `level')/2)
+    local lcomp = _b[`graph'] - `CI'*_se[`graph']
+    local ucomp = _b[`graph'] + `CI'*_se[`graph']
+}
 
 ********************************************************************************
 *** (3) Union of Confidence Intervals approach (uci)
@@ -297,11 +302,6 @@ qui estimates store __iv
 if "`method'"=="uci" {
     
     local points=1
-    if length("`graph'")!=0 {
-        local points=4
-        matrix __graphmat = J(`points',4,.)
-    }		
-    
     foreach gnum of numlist 1(1)`points' {
         local cRatio =	`gnum'/`points'
         foreach item in min max {
@@ -405,26 +405,118 @@ if "`method'"=="uci" {
                 }
             }
             dis in yellow in smcl "{hline 78}"
-            if length("`graph'")!=0 {
-                dis "Graph add for value" `cRatio'*`g1max'
-                dis "Should add for value" `cRatio'*`g1min'
-                matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
-                matrix __graphmat[`gnum',2]=.
-                matrix __graphmat[`gnum',3]=e(lb_`graph')
-                matrix __graphmat[`gnum',4]=e(ub_`graph')
-            }
-
         }
-        else if `gnum'<`points' {
-            dis "Graph add for value" `cRatio'*`g1max'
-            dis "Should add for value" `cRatio'*`g1min'
-            matrix __graphmat[`gnum',1]=`cRatio'*`g1max'
-            tokenize `vars_final'	
-            foreach regressor of numlist 1(1)`counter' {
-                if `"`graph'"'==`"``regressor''"' {
-                    matrix __graphmat[`gnum',3]=`l`regressor''
-                    matrix __graphmat[`gnum',4]=`u`regressor''
+    }
+
+    if length("`graph'")!=0 {
+        if `count_iv'>1 {
+            dis as error "Graphing with UCI only supported with 1 plausibly exogenous variable"
+            exit 200
+        }
+        local points=7
+        matrix __graphmat = J(`points',4,.)
+        
+        if (`g1max'<=0&`g1min'<=0)|(`g1max'>=0&`g1min'>=0) {
+            local range = `g1max'-`g1min'
+            dis `range'
+
+            local jj=0
+            while `jj'<=`points'-1 {
+                local cRatio = (`jj'/(`points'-1))*`range'
+                local gammaC = `cRatio'+`g1min'
+                local ++jj
+            
+                tempvar Y_G
+                qui gen `Y_G'=`yvar'
+            
+                qui replace `Y_G'=`Y_G'-`varlist_iv'*`gammaC'
+            
+                qui ivregress 2sls `Y_G' `varlist1' (`varlist2'=`varlist_iv') `if' /*
+                */ `in' [`weight' `exp'], vce(`vce')
+
+                local CI    = -invnormal((1 - `level')/2)
+                local ltemp = _b[`graph'] - `CI'*_se[`graph']
+                local utemp = _b[`graph'] + `CI'*_se[`graph']
+                if `jj'==1 {
+                    local l`regressor'=`lcomp'
+                    local u`regressor'=`ucomp'
                 }
+                local l`regressor' = min(`l`regressor'',`ltemp')
+                local u`regressor' = max(`u`regressor'',`utemp')
+
+                matrix __graphmat[`jj',1]=`gammaC'
+                matrix __graphmat[`jj',3]=`l`regressor''
+                matrix __graphmat[`jj',4]=`u`regressor''
+                mat list __graphmat
+            }
+        }
+        else {
+            local range = `g1max'-0
+            dis `range'
+
+            local jj=3
+            while `jj'<=`points'-1 {
+                dis (`jj'-3)/(`points'-4)
+                local cRatio = (`jj'-3)/(`points'-4)*`range'
+                local gammaC = `cRatio'+0
+                local ++jj
+                
+                tempvar Y_G
+                qui gen `Y_G'=`yvar'
+            
+                qui replace `Y_G'=`Y_G'-`varlist_iv'*`gammaC'
+            
+                qui ivregress 2sls `Y_G' `varlist1' (`varlist2'=`varlist_iv') `if' /*
+                */ `in' [`weight' `exp'], vce(`vce')
+
+                local CI    = -invnormal((1 - `level')/2)
+                local ltemp = _b[`graph'] - `CI'*_se[`graph']
+                local utemp = _b[`graph'] + `CI'*_se[`graph']
+                if `jj'==4 {
+                    local l`regressor'=`lcomp'
+                    local u`regressor'=`ucomp'
+                }
+                local l`regressor' = min(`l`regressor'',`ltemp')
+                local u`regressor' = max(`u`regressor'',`utemp')
+                
+                matrix __graphmat[`jj',1]=`gammaC'
+                matrix __graphmat[`jj',3]=`l`regressor''
+                matrix __graphmat[`jj',4]=`u`regressor''
+                mat list __graphmat
+            }
+            local range = `g1min'-0
+            dis `range'
+            
+            local jj=0
+            ***HERE START AT HIGHEST AND ITERATE BACKWARDS foreach jj of numlist 3(-1)1
+            while `jj'<=`points'-5 {
+                local cRatio = (`jj'+1)/(`points'-4)*`range'
+                dis `cRatio'
+                local gammaC = 0+`cRatio'
+                local ++jj
+                
+                tempvar Y_G
+                qui gen `Y_G'=`yvar'
+            
+                qui replace `Y_G'=`Y_G'-`varlist_iv'*`gammaC'
+            
+                qui ivregress 2sls `Y_G' `varlist1' (`varlist2'=`varlist_iv') `if' /*
+                */ `in' [`weight' `exp'], vce(`vce')
+
+                local CI    = -invnormal((1 - `level')/2)
+                local ltemp = _b[`graph'] - `CI'*_se[`graph']
+                local utemp = _b[`graph'] + `CI'*_se[`graph']
+                if `jj'==1 {
+                    local l`regressor'=`lcomp'
+                    local u`regressor'=`ucomp'
+                }
+                local l`regressor' = min(`l`regressor'',`ltemp')
+                local u`regressor' = max(`u`regressor'',`utemp')
+                
+                matrix __graphmat[`jj',1]=`gammaC'
+                matrix __graphmat[`jj',3]=`l`regressor''
+                matrix __graphmat[`jj',4]=`u`regressor''
+                mat list __graphmat
             }
         }
     }
