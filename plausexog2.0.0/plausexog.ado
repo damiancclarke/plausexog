@@ -45,7 +45,7 @@ syntax anything(name=0 id="variable list")
 	;
 #delimit cr
 
-
+preserve
 ********************************************************************************
 *** (1) Unpack arguments, check for valid syntax, general error capture
 ********************************************************************************
@@ -418,7 +418,6 @@ if "`method'"=="uci" {
         
         if (`g1max'<=0&`g1min'<=0)|(`g1max'>=0&`g1min'>=0) {
             local range = `g1max'-`g1min'
-            dis `range'
 
             local jj=0
             while `jj'<=`points'-1 {
@@ -447,16 +446,13 @@ if "`method'"=="uci" {
                 matrix __graphmat[`jj',1]=`gammaC'
                 matrix __graphmat[`jj',3]=`l`regressor''
                 matrix __graphmat[`jj',4]=`u`regressor''
-                mat list __graphmat
             }
         }
         else {
             local range = `g1max'-0
-            dis `range'
 
             local jj=3
             while `jj'<=`points'-1 {
-                dis (`jj'-3)/(`points'-4)
                 local cRatio = (`jj'-3)/(`points'-4)*`range'
                 local gammaC = `cRatio'+0
                 local ++jj
@@ -482,16 +478,12 @@ if "`method'"=="uci" {
                 matrix __graphmat[`jj',1]=`gammaC'
                 matrix __graphmat[`jj',3]=`l`regressor''
                 matrix __graphmat[`jj',4]=`u`regressor''
-                mat list __graphmat
             }
             local range = `g1min'-0
-            dis `range'
             
             local jj=0
-            ***HERE START AT HIGHEST AND ITERATE BACKWARDS foreach jj of numlist 3(-1)1
             while `jj'<=`points'-5 {
                 local cRatio = (`jj'+1)/(`points'-4)*`range'
-                dis `cRatio'
                 local gammaC = 0+`cRatio'
                 local ++jj
                 
@@ -516,7 +508,6 @@ if "`method'"=="uci" {
                 matrix __graphmat[`jj',1]=`gammaC'
                 matrix __graphmat[`jj',3]=`l`regressor''
                 matrix __graphmat[`jj',4]=`u`regressor''
-                mat list __graphmat
             }
         }
     }
@@ -710,134 +701,131 @@ if "`method'"=="ltz" {
 if length("`graph'")!=0 {
     local Nomegas  : word count `graphomega'	
     local Nmus     : word count `graphmu'
-        local Gerr1    "graphmu and graphomega"
+    local Gerr1    "graphmu and graphomega"
+    
+    if `Nomegas'==0|`Nmus'==0 {
+        dis as error "When specifing graph and ltz, the `Gerr1' options are required"
+        exit 272
+    }
+    if `Nomegas'!=`Nmus' {
+        dis as error "`Gerr1' must take the same number of elements"
+        exit 272
+    }
+    matrix __graphmatLTZ = J(`Nomegas',4,.)
+    
+    local countdelta   : word count `graphdelta'
+    if `countdelta'!=0 {
+        local j=1	
+        foreach num of numlist `graphdelta' {
+            matrix __graphmatLTZ[`j',1]=`num'
+            local ++j
+        }
+    }
+    
+    tokenize `graphmu'
+    local j=1
+    foreach item in `graphomega' {
+        qui dis "Estimating for `item'"
+        mat def omegaC=`item'
+        mat def muC=``j''
+        
+        scalar s4=rowsof(omegaC)
+        scalar s5=colsof(omegaC)
+        scalar s6=rowsof(muC)
+        scalar s7=colsof(muC)
+        
+        local Oerr1 "defined by user is"
+        local Oerr2 "Ensure that Omega is of the same dimension"
+        if s1!=s4|s1!=s5 {
+            dis as err "Z'Z matrix is `=s1'*`=s1', graph omega (`j') `Oerr1' `=s4'*`=s5'"
+            dis as err "`Oerr2' as Z'Z to avoid `em'"
+        }
+        if s2!=s4|s2!=s5 {
+            dis as err "Z'X matrix is `=s2'*`=s2', graph omega (`j') `Oerr1' `=s4'*`=s5'"
+            dis as err "`Oerr2' as Z'X to avoid `em'"
+        }
+        if s7!=1 {
+            dis as error "graph mu (`j') does not have 1 column"
+            dis as err "Ensure that each graph mu is 1*k vector to avoid `em'"
+        }
+        
+        qui estimates restore __iv
+        
+        mat Vc = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omegaC * ZX*inv(ZX'*inv(ZZ)*ZX)
+        mat bc = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * muC)'
 
-		if `Nomegas'==0|`Nmus'==0 {
-			dis as error "When specifing graph and ltz, the `Gerr1' options are required"
-			exit 272
-		}
-		if `Nomegas'!=`Nmus' {
-			dis as error "`Gerr1' must take the same number of elements"
-			exit 272
-		}
-		matrix __graphmatLTZ = J(`Nomegas',4,.)
+        ereturn post bc Vc
+        matrix CI = -invnormal((1-`level')/2)
 
-		local countdelta   : word count `graphdelta'
-		if `countdelta'!=0 {
-			local j=1	
-			foreach num of numlist `graphdelta' {
-					matrix __graphmatLTZ[`j',1]=`num'
-				local ++j
-			}
-		}
+        if `countdelta'==0 {
+            scalar delta=omegaC[1,1]
+            matrix __graphmatLTZ[`j',1]=delta
+        }		
+        matrix __graphmatLTZ[`j',2]=_b[`graph']
+        matrix __graphmatLTZ[`j',3]=_b[`graph']-_se[`graph']*CI
+        matrix __graphmatLTZ[`j',4]=_b[`graph']+_se[`graph']*CI
 
-		tokenize `graphmu'
-		local j=1
-		foreach item in `graphomega' {
-			qui dis "Estimating for `item'"
-			mat def omegaC=`item'
-			mat def muC=``j''
-
-			scalar s4=rowsof(omegaC)
-			scalar s5=colsof(omegaC)
-			scalar s6=rowsof(muC)
-			scalar s7=colsof(muC)
-
-            local Oerr1 "defined by user is"
-            local Oerr2 "Ensure that Omega is of the same dimension"
-			if s1!=s4|s1!=s5 {
-				dis as err "Z'Z matrix is `=s1'*`=s1', graph omega (`j') `Oerr1' `=s4'*`=s5'"
-				dis as err "`Oerr2' as Z'Z to avoid `em'"
-			}
-			if s2!=s4|s2!=s5 {
-				dis as err "Z'X matrix is `=s2'*`=s2', graph omega (`j') `Oerr1' `=s4'*`=s5'"
-				dis as err "`Oerr2' as Z'X to avoid `em'"
-			}
-			if s7!=1 {
-				dis as error "graph mu (`j') does not have 1 column"
-				dis as err "Ensure that each graph mu is 1*k vector to avoid `em'"
-			}
-				
-			qui estimates restore __iv
-
-			mat Vc = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omegaC * ZX*inv(ZX'*inv(ZZ)*ZX)
-			mat bc = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * muC)'
-				
-			ereturn post bc Vc
-			matrix CI = -invnormal((1-`level')/2)
-
-			if `countdelta'==0 {
-				scalar delta=omegaC[1,1]
-				matrix __graphmatLTZ[`j',1]=delta
-			}		
-			matrix __graphmatLTZ[`j',2]=_b[`graph']
-			matrix __graphmatLTZ[`j',3]=_b[`graph']-_se[`graph']*CI
-			matrix __graphmatLTZ[`j',4]=_b[`graph']+_se[`graph']*CI
-
-			local ++j
-		}
-	}
+        local ++j
+        }
+    }
     *****************************************************************************
-	*** (5dii) Form augmented var-covar and coefficient matrices (see appendix)
-	*****************************************************************************
-	qui estimates restore __iv
-	mat V1 = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omega_in * ZX*inv(ZX'*inv(ZZ)*ZX)
-	mat b1 = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * mu_in)'
+    *** (5dii) Form augmented var-covar and coefficient matrices (see appendix)
+    *****************************************************************************
+    qui estimates restore __iv
+    mat V1 = e(V) +  inv(ZX'*inv(ZZ)*ZX)*ZX' * omega_in * ZX*inv(ZX'*inv(ZZ)*ZX)
+    mat b1 = e(b) - (inv(ZX'*inv(ZZ)*ZX)*ZX' * mu_in)'
 
-	*****************************************************************************
-	*** (5e) Determine lower and upper bounds
-	*****************************************************************************
-	mat CI  = -invnormal((1-`level')/2)
-	mat lb  = b1 - vecdiag(cholesky(diag(vecdiag(V1))))*CI
-	mat ub  = b1 + vecdiag(cholesky(diag(vecdiag(V1))))*CI
+    *****************************************************************************
+    *** (5e) Determine lower and upper bounds
+    *****************************************************************************
+    mat CI  = -invnormal((1-`level')/2)
+    mat lb  = b1 - vecdiag(cholesky(diag(vecdiag(V1))))*CI
+    mat ub  = b1 + vecdiag(cholesky(diag(vecdiag(V1))))*CI
 
-	dis _newline	
-	dis "Conley et al. (2012)'s LTZ results" _col(55) "Number of obs =    " e(N)
+    dis _newline	
+    dis "Conley et al. (2012)'s LTZ results" _col(55) "Number of obs =    " e(N)
 
-	ereturn post b1 V1
-	ereturn display
+    ereturn post b1 V1
+    ereturn display
 }
 
 ********************************************************************************
 *** (6) Visualise as per Conely et al., (2012) Figures 1-2
 ********************************************************************************
 if length("`graph'")!=0 {
-	if "`method'"=="uci" {
-		svmat __graphmat	
-
-		if length("`graphopts'")==0 {
-			local graphopts ytitle("Estimated Beta for `graph'") /*
-			*/ xtitle("{&delta}") title("Union of Confidence Interval Approach") /*
-			*/ note("Methodology described in Conley et al. (2012)")
-		}
-                mat list __graphmat
+    if "`method'"=="uci" {
+        svmat __graphmat	
+        
+        if length("`graphopts'")==0 {
+            local graphopts ytitle("Estimated Beta for `graph'") /*
+            */ xtitle("{&delta}") title("Union of Confidence Interval Approach") /*
+            */ note("Methodology described in Conley et al. (2012)")
+        }
                 
-		twoway line __graphmat3 __graphmat1, lpattern(dash) lcolor(black) || ///
-		line       __graphmat4 __graphmat1, lpattern(dash) lcolor(black)     ///
-		legend(order(1 "Upper Bound (UCI)" 2 "Lower Bound (UCI)"))           ///
-		scheme(s1color) `graphopts'
-		
-	}
+        sort __graphmat1 
+        twoway line __graphmat3 __graphmat1, lpattern(dash) lcolor(black) || ///
+        line        __graphmat4 __graphmat1, lpattern(dash) lcolor(black)     ///
+        legend(order(1 "Upper Bound (UCI)" 2 "Lower Bound (UCI)"))           ///
+            scheme(s1color) `graphopts'
+    }
 
-	if "`method'"=="ltz" {
-		svmat __graphmatLTZ
-
-		if length("`graphopts'")==0 {
-			local graphopts ytitle("{&beta}") xtitle("{&delta}") /*
-			*/ title("Local to Zero Approach") /*
-			*/ note("Methodology described in Conley et al. (2012)")
-		}
+    if "`method'"=="ltz" {
+        svmat __graphmatLTZ
+        
+        if length("`graphopts'")==0 {
+            local graphopts ytitle("{&beta}") xtitle("{&delta}") /*
+                  */ title("Local to Zero Approach") /*
+                  */ note("Methodology described in Conley et al. (2012)")
+        }
 			
-		twoway line __graphmatLTZ2 __graphmatLTZ1,                        || ///
-		line  __graphmatLTZ3 __graphmatLTZ1, lpattern(dash) lcolor(black) || ///
-		line  __graphmatLTZ4 __graphmatLTZ1, lpattern(dash) lcolor(black)    ///
-		legend(order(1 "Point Estimate (LTZ)" 2 "CI (LTZ)"))                 ///
-		scheme(s1color) `graphopts'
-	  
-	}
-
-	cap drop __graphmat*
-
+        twoway line __graphmatLTZ2 __graphmatLTZ1,                        || ///
+        line  __graphmatLTZ3 __graphmatLTZ1, lpattern(dash) lcolor(black) || ///
+        line  __graphmatLTZ4 __graphmatLTZ1, lpattern(dash) lcolor(black)    ///
+        legend(order(1 "Point Estimate (LTZ)" 2 "CI (LTZ)"))                 ///
+        scheme(s1color) `graphopts'  
+    }
+    
+    cap drop __graphmat*
 }
 
 
@@ -845,5 +833,5 @@ if length("`graph'")!=0 {
 *** (7) Clean up
 ********************************************************************************
 estimates drop __iv
-
+restore
 end

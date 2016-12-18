@@ -1,5 +1,5 @@
 {smcl}
-{* mayo 9, 2014 @ 13:07:27}{...}
+{* december 18, 2016 @ 19:27:51}{...}
 {hi:help plausexog}{right:see also: {helpb ivregress}}
 {hline}
 
@@ -18,14 +18,14 @@
 
 
 
-{synoptset 22}{...}
+{synoptset 27}{...}
 {synopthdr:method}
 {synoptline}
 {synopt:{opt uci}} Union of confidence intervals{p_end}
 {synopt:{opt ltz}} Local to Zero approach {p_end}
 {synoptline}
 
-{synoptset 22 tabbed}{...}
+{synoptset 27 tabbed}{...}
 {synopthdr}
 {synoptline}
 {synopt :{opt level(#)}}set confidence level; default is {cmd:level(0.95)}{p_end}
@@ -41,7 +41,12 @@ calculate bounds; default is {cmd:grid(2)}{p_end}
 {syntab :ltz}
 {synopt:{opt mu(string)}}Vector specifying mean of prior for support of gamma{p_end}
 {synopt:{opt omega(string)}}Matrix specifying variance-covariance for support of gamma{p_end}
-{synopt:{opt distribution(name, p1 [, p2])}}Allows for specification of gammas with arbitrary distributions.  Allowed distributions are: normal|uniform|chi2|poisson|t|gamma|special. Numerical parameters for distributions are specified as p1, and if necessary, p2.{p_end}
+{synopt:{opth dist:ribution(name, params)}}Allows for the specification of gammas with arbitrary distributions.  Allowed distributaions are: normal, uniform, chi2, poisson, t, gamma, or special.
+Numerical parameters associated with the distributions are specified as "params". As many parameters are required as plausibly exogenous variables and {help rnormal:distribution moments}.  Further details are provided below. {p_end}
+{synopt :{opt seed(#)}}Sets the {help seed} for simulation-based calculations when using a non-Gaussian prior for the LTZ option.
+Only required when specifying the distribution option.{p_end}
+{synopt :{opt iterations(#)}}Determines the number of iterations for simulation-based calculations when using a non-Gaussian prior for the LTZ option.
+Only required when specifying the distribution option; default is {cmd:iterations(5000)}{p_end}
 
 {syntab :Graphing}
 {synopt:{opth gra:ph(varname)}}{p_end}
@@ -92,6 +97,18 @@ around zero (for example by specifying a normal distribution centred at zero, or
 non-symmetrical around zero (for example by specififying a uniform U[0,G]
 distribution, where G is some scalar reflecting the maximum believed deviation
 from zero).
+
+{pstd}
+Analytical bounds in the local to zero approach are based on an assumed normal distribution
+for gamma.  However, Conley et al. document that a simulation-based approach can be
+used to calculate bounds for non-normal distributions of gamma in the LTZ approach.
+{cmd:plausexog} has implemented this simulation-based approach for a number of
+{help rnormal:common distributions} such as the uniform, Chi-squared, Poisson, or
+Gamma distribution.  However, non-standard and empirical distributions for gamma
+can be used when a sample from this distribution is passed to the command as a
+variable.  Instructions are available in the {opt distribution} option, and  full
+details of the simulation-based algorithm followed by {cmd:plausexog} are available
+on page 265 of Conley et al. (2012).
 
 {pstd}
 {cmd:plausexog} can return results in various ways.  By default it returns an output
@@ -170,6 +187,34 @@ N*N where N is the number of variables in equation (1) including the constant te
 The matrix should be entered using Stata's {helpb matrix_define:matrix} syntax.
 
 {phang}
+{opt distribution(name, params)} allows for non-guassian priors for the distribution
+of gamma.  When using the distribution option, the mu and omega option do not need
+to be specified.  Bounds based on non-normal distributions for gamma are calculated
+using the simulation-based algorithm described in Conley et al. page 265.  Accepted
+distributions names are: normal, uniform, chi2, poisson, t, gamma, and special.
+When specifying any of the first six options, parameters must be specified along
+with each of these distributions.  For normal, parameters are the assumed mean and
+standard deviation; for uniform, the parameters are the minimum and maximum; for
+chi2 (Chi squared) it is the degrees of freedom; for Poisson it is the distribution
+mean, for t it is the degrees of freedom; and for gamma it is the shape and scale
+of the assumed distribution.  For any assumed distribution of gamma which is not
+contained in the previous list, {opt special} can be specified, and a variable can
+be passed which contains analytical draws from this distribution.  If more than
+one plausibly exogenous variable is used, the relevant parameters must be specified
+for each plausibly exogenous variable.
+
+{phang}
+{opt seed(#)} Sets the {help seed} for simulation-based calculations when using a
+non-Gaussian prior for the LTZ option.  Setting the seed allows for bounds to be
+replicated when using the simulation-based process described above.
+Only required when specifying the distribution option.
+
+{phang}
+{opt iterations(#)} Determines the number of iterations for simulation-based
+calculations when using a non-Gaussian prior for the LTZ option. Only required
+when specifying the distribution option; default is {cmd:iterations(5000)}.
+
+{phang}
 {opt graphomega(string)}; see {helpb plausexog##graphing:plausexog graphing}
 
 {phang}
@@ -237,6 +282,9 @@ to each graphmu() and graphomega() should be listed in graphdelta().  See the
 {phang2}{cmd:. matrix mu_eta = J(19,1,0)}{p_end}
 {phang2}{cmd:. plausexog ltz net_tfa `xvar' (p401 = e401), omega(omega_eta) mu(mu_eta) level(.95) vce(robust)}{p_end}
 
+{pstd} Run same local to zero (LTZ) estimation using simulation-based method which works for arbitrary distributions (here normal with mean zero and standard deviation 5000){p_end}
+{phang2}{cmd:. plausexog ltz net_tfa `xvar' (p401 = e401), distribution(normal, 0, 5000)}{p_end}
+
 {pstd} Run local to zero (LTZ) estimation and graph output as per Conley et al. (figure 2){p_end}
         {cmd:. foreach num of numlist 1(1)5 {c -(}}
               {cmd:matrix om`num' = J(19,19,0)}
@@ -286,5 +334,5 @@ Online:  {manhelp ivregress R: ivregress}
 {title:Author}
 
 {pstd}
-Damian C. Clarke, Department of Economics, University of Oxford. {browse "mailto:damian.clarke@economics.ox.ac.uk":damian.clarke@economics.ox.ac.uk}
+Damian Clarke, Department of Economics, Universidad de Santiago de Chile. {browse "mailto:damian.clarke@usach.cl":damian.clarke@usach.cl}
 {p_end}
