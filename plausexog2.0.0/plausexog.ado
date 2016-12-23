@@ -65,10 +65,15 @@ if "`method'"!="uci"&"`method'"!="ltz"&"`method'"!="upwci" {
     exit 200
 }
 
-
 if `equal'!=1|`lparen'!=1|`rparen'!=1 {
     dis as error "Specification of varlist is incorrect."
     dis as error "Ensure that syntax is: method yvar [exog] (endog=iv), [opts]"	
+    exit 200
+}
+
+if `level'<=0|`level'>=1 {
+    dis as error "Confidence level was requested as `level'"
+    dis as error "The confidence level must be between 0 and 1. default is level(0.95)"
     exit 200
 }
 
@@ -658,9 +663,11 @@ if "`method'"=="ltz" {
 
     foreach num of numlist 1(1)`nvars' {
         mata : st_matrix("betasSim", sort(st_matrix("betasSim"), `num'))
-        
-        local l`num' = betasSim[round(`iterations'*0.025),`num']
-        local u`num' = betasSim[round(`iterations'*0.975),`num']
+
+        local lbci = (1-`level')/2
+        local ubci = 1-(1-`level')/2        
+        local l`num' = betasSim[round(`iterations'*`lbci'),`num']
+        local u`num' = betasSim[round(`iterations'*`ubci'),`num']
         *local lowerbound = betasSim[round(`iterations'*0.025),`num']
         *local upperbound = betasSim[round(`iterations'*0.975),`num']
         *dis "Bound for variable `num' is [`lowerbound',`upperbound']"
