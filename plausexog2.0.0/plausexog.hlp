@@ -269,7 +269,7 @@ to each graphmu() and graphomega() should be listed in graphdelta().  See the
 
 
 {pstd}Setup{p_end}
-{phang2}{cmd:. webuse set http://users.ox.ac.uk/~ball3491/}{p_end}
+{phang2}{cmd:. webuse set http://www.damianclarke.net/data/}{p_end}
 {phang2}{cmd:. webuse Conleyetal2012}{p_end}
 {phang2}{cmd:. local xvar i2 i3 i4 i5 i6 i7 age age2 fsize hs smcol col marr twoearn db pira hown}{p_end}
 
